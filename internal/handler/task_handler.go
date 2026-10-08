@@ -1,0 +1,66 @@
+package handler
+
+import (
+	"net/http"
+	"strconv"
+	"taskqueue/internal/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+type TaskHandler struct {
+	service *service.TaskService
+}
+
+func New(service *service.TaskService) *TaskHandler{
+	return &TaskHandler{service: service}
+} 
+
+func (h *TaskHandler) CreateTask(ctx *gin.Context){
+	type CreateTaskRequest struct {
+		Name string `json:"name"`
+	}
+
+	var taskRequest CreateTaskRequest
+
+	bindingErr := ctx.ShouldBindJSON(&taskRequest)
+
+	if bindingErr != nil {
+		ctx.JSON(http.StatusBadRequest,gin.H{"error":bindingErr})
+		return
+	}
+
+   task,err := h.service.CreateTask(taskRequest.Name)
+
+   if err != nil {
+	ctx.JSON(http.StatusInternalServerError,gin.H{"error":err})
+	return
+   }
+
+   ctx.JSON(http.StatusCreated,task)
+
+
+}
+
+
+func (h * TaskHandler) GetTask(ctx *gin.Context){
+		idstr := ctx.Param("id")
+
+		id,err := strconv.Atoi(idstr)
+
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest,gin.H{"message":"Invalid task ID"})
+			return
+		}
+		
+		task , InternalErr := h.service.GetTask(id)
+
+		if InternalErr != nil {
+			ctx.JSON(http.StatusInternalServerError,gin.H{"error":InternalErr})
+			return
+		}
+
+		ctx.JSON(http.StatusAccepted,task)
+
+
+}
