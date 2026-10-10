@@ -1,9 +1,14 @@
 package repository
 
 import (
-	"fmt"
 	"sync"
 	"taskqueue/internal/model"
+	"errors"
+)
+
+var (
+    ErrTaskNotFound = errors.New("task not found")
+    
 )
 
 type MemoryRepository struct {
@@ -35,7 +40,7 @@ func (repo *MemoryRepository) Get(id int)(*model.Task,error){
 	task,ok := repo.tasks[id]
 
 	if !ok {
-		return &model.Task{},fmt.Errorf("task not found")
+		return &model.Task{},ErrTaskNotFound
 	}
 
 	return task,nil
@@ -46,6 +51,8 @@ func (repo *MemoryRepository) Update(task *model.Task) error {
 	defer repo.mutex.Unlock()
 
 	repo.tasks[task.ID] = task
+
+
 
 	return nil
 }
