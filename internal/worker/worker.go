@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"taskqueue/internal/model"
 	"taskqueue/internal/queue"
@@ -18,7 +19,7 @@ func New(workerId int, que *queue.Queue, repo repository.TaskRepository) *Worker
 	return &Worker{ID: workerId, Queue: que, repo: repo}
 }
 
-func  ProcessTask(task model.Task) error {
+func ProcessTask(task model.Task) error {
 	fmt.Println("Processing", "Task ID", task.ID, " ", task.Name)
 	time.Sleep(time.Second * 5)
 	if task.Name == "fail" {
@@ -30,13 +31,13 @@ func  ProcessTask(task model.Task) error {
 	return nil
 }
 
-func (worker *Worker) Start() {
+func (worker *Worker) Start(ctx context.Context) {
 
 	for {
 
 		task := worker.Queue.Dequeue()
 
-		newTask, err := worker.repo.Get(task.ID)
+		newTask, err := worker.repo.GetTask(ctx, int64(task.ID))
 
 		if err != nil {
 			continue
@@ -44,7 +45,7 @@ func (worker *Worker) Start() {
 		newTask.Status = "processing"
 		newTask.UpdatedAt = time.Now()
 		newTask.Attempts++
-		worker.repo.Update(newTask)
+		worker.repo.UpdateTask(ctx, newTask)
 
 		processErr := ProcessTask(*newTask)
 
@@ -57,7 +58,7 @@ func (worker *Worker) Start() {
 			newTask.UpdatedAt = time.Now()
 
 		}
-		worker.repo.Update(newTask)
+		worker.repo.UpdateTask(ctx, newTask)
 
 	}
 }

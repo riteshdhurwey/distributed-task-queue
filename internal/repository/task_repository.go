@@ -1,10 +1,12 @@
 package repository
 
-import "taskqueue/internal/model"
+import (
+	"context"
+	"taskqueue/internal/model"
+)
 
 type TaskRepository interface {
-	Create(task *model.Task) error
-	Get(id int) (*model.Task,error)
-	Update(task *model.Task) error
-	GetTaskID() int
+	CreateTask(ctx context.Context, task *model.Task) (int64, error)
+	GetTask(ctx context.Context, id int64) (*model.Task, error)
+	UpdateTask(ctx context.Context, task *model.Task) error
 }
