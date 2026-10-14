@@ -1,60 +1,80 @@
 # Distributed Task Queue
 
-A Go-based asynchronous task processing service built with Gin, goroutines, and channels. It accepts tasks through a REST API, processes them using concurrent workers, and tracks their execution status.
+A Go-based asynchronous task processing service built with Gin, PostgreSQL, and Redis. It accepts tasks through a REST API, queues task IDs in Redis, processes tasks concurrently using workers, and persists task execution status in PostgreSQL.
 
 ## Features
 
-* **REST API:** Submit tasks and retrieve their current status.
-* **Concurrent workers:** Process tasks using goroutines and a channel-based queue.
-* **Task lifecycle tracking:** Track tasks through `pending`, `processing`, `completed`, and `failed` states.
-* **Failure handling:** Record processing errors when a task fails.
-* **Manual retries:** Retry eligible failed tasks through an API endpoint.
-* **Layered architecture:** Separate handlers, services, queue management, workers, and repository storage.
+- **REST API:** Submit tasks and retrieve their status.
+- **Concurrent workers:** Process tasks using goroutines.
+- **Redis queue:** Use a Redis Sorted Set (ZSET) to order queued task IDs by score.
+- **PostgreSQL persistence:** Store task details, status, attempts, and timestamps.
+- **Task lifecycle tracking:** Track tasks through `pending`, `processing`, `completed`, and `failed` states.
+- **Failure handling:** Record task processing errors.
+- **Startup recovery:** Reload pending tasks from PostgreSQL and re-enqueue them after a server restart.
+- **Layered architecture:** Separate handlers, services, repositories, queue operations, and workers.
 
 ## Architecture
 
 ```text
-                 Client
-                   |
-                   v
-             Gin REST API
-                   |
-                   v
-                Handler
-                   |
-                   v
-                Service
-                 /   \
-                v     v
-          Repository  Queue
-                ^       |
-                |       v
-                +---- Workers
+                   Client
+                     |
+                     v
+                 Gin REST API
+                     |
+                     v
+                   Handler
+                     |
+                     v
+                 Task Service
+                   /      \
+                  v        v
+          PostgreSQL      Redis
+          Repository      ZSET
+              ^              |
+              |              v
+              +----------- Worker
 ```
 
-The repository currently uses in-memory storage. Tasks and queue contents are not durable across server restarts.
+PostgreSQL stores the task records, while Redis maintains the queue of task IDs. Workers retrieve task details from PostgreSQL and update their execution status after processing.
+
+At startup, the application loads eligible pending tasks from PostgreSQL and re-enqueues them in Redis.
 
 ## Tech Stack
 
-* **Language:** Go
-* **HTTP framework:** Gin
-* **Concurrency:** Goroutines and channels
-* **Storage:** In-memory repository
-* **API format:** JSON over HTTP
+- **Language:** Go
+- **HTTP framework:** Gin
+- **Database:** PostgreSQL
+- **Queue:** Redis Sorted Set (ZSET)
+- **Concurrency:** Goroutines
+- **API format:** JSON over HTTP
 
 ## Getting Started
 
 ### Prerequisites
 
-* Go installed
-* Git installed
+- Go installed
+- PostgreSQL installed and running
+- Redis installed and running
+- Git installed
 
 ### Clone the repository
 
 ```bash
-  git clone https://github.com/riteshdhurwey/distributed-task-queue.git
+git clone https://github.com/riteshdhurwey/distributed-task-queue.git
 cd distributed-task-queue
 ```
+
+### Configure environment variables
+
+Create a `.env` file in the project root with the database, Redis, and server settings expected by your application.
+
+Do not commit credentials or secrets.
+
+### Set up the database
+
+Create your PostgreSQL database and apply the task table schema used by the application.
+
+Ensure PostgreSQL and Redis are running before starting the server.
 
 ### Install dependencies
 
@@ -68,7 +88,7 @@ go mod tidy
 go run ./cmd/server
 ```
 
-The server should start on the address configured in your application, for example `localhost:8080`.
+The server listens on the address configured in your application, for example `localhost:8080`.
 
 ## API Endpoints
 
@@ -76,15 +96,13 @@ The server should start on the address configured in your application, for examp
 
 `POST /tasks`
 
-Request:
-
 ```bash
 curl -X POST http://localhost:8080/tasks \
   -H "Content-Type: application/json" \
   -d '{"name":"Send Email"}'
 ```
 
-A successful request returns the created task and its initial or current status, depending on how quickly a worker begins processing it.
+The service persists the task in PostgreSQL and enqueues its ID in Redis.
 
 ### 2. Get task status
 
@@ -102,12 +120,12 @@ Example response:
   "name": "Send Email",
   "status": "completed",
   "attempts": 1,
-  "created_at": "2026-10-08T19:28:10+05:30",
-  "updated_at": "2026-10-08T19:28:15+05:30"
+  "created_at": "2026-10-14T22:42:55+05:30",
+  "updated_at": "2026-10-15T00:57:51+05:30"
 }
 ```
 
-The response above is illustrative; timestamps and task status depend on actual execution.
+The response is illustrative; actual timestamps and status depend on execution.
 
 ### 3. Retry a failed task
 
@@ -117,16 +135,24 @@ The response above is illustrative; timestamps and task status depend on actual 
 curl -X POST http://localhost:8080/tasks/1/retry
 ```
 
-Only tasks meeting the retry eligibility rules can be retried. The endpoint returns an appropriate response when the request is invalid or the task cannot be retried.
+This endpoint is available if manual retry functionality is implemented and registered in the application.
 
 ## Task Lifecycle
 
 ```text
 pending → processing → completed
-                    ↘ failed
+                 |
+                 v
+               failed
+                 |
+                 v
+          manual retry
+                 |
+                 v
+              pending
 ```
 
-A failed task can be manually retried, returning it to the pending state for another processing attempt.
+Tasks are persisted in PostgreSQL, and pending task IDs are queued in Redis.
 
 ## Project Structure
 
@@ -135,14 +161,15 @@ A failed task can be manually retried, returning it to the pending state for ano
 ├── cmd/
 │   └── server/
 │       └── main.go
+├── config/
 ├── internal/
+│   ├── database/
 │   ├── handler/
 │   ├── model/
 │   ├── queue/
 │   ├── repository/
 │   ├── service/
 │   └── worker/
-├── config/
 ├── go.mod
 ├── go.sum
 ├── .gitignore
@@ -151,21 +178,24 @@ A failed task can be manually retried, returning it to the pending state for ano
 
 ## Current Limitations
 
-* Tasks and queued work are held in memory.
-* Tasks may be lost if the process exits or crashes.
-* Automatic retry scheduling and exponential backoff are not implemented.
-* Production-grade shutdown, recovery, and observability are still areas for improvement.
+- Reliable recovery of tasks claimed by workers that crash still needs to be addressed.
+- A failure between database insertion and Redis enqueueing can leave a task unqueued.
+- Automatic retries with exponential backoff are not yet implemented.
+- Graceful shutdown, structured logging, metrics, and production-grade reliability need further work.
 
 ## Roadmap
 
-* [ ] PostgreSQL persistence
-* [ ] Automatic retries with exponential backoff
-* [ ] Graceful worker shutdown
-* [ ] Unit and integration tests
-* [ ] Structured logging and metrics
-* [ ] Docker support
-* [ ] Durable message broker integration
+- [x] PostgreSQL task persistence
+- [x] Redis ZSET queue integration
+- [x] Startup recovery of pending tasks
+- [ ] Reliable task claiming and crash recovery
+- [ ] Automatic retries with exponential backoff
+- [ ] Graceful worker shutdown
+- [ ] Unit and integration tests
+- [ ] Structured logging and metrics
+- [ ] Docker support
+- [ ] Transactional outbox for reliable database-to-queue delivery
 
 ## License
 
-Choose a license before publishing the project for reuse, such as the MIT License.
+Choose and add a license before publishing the project for reuse, such as the MIT License.
