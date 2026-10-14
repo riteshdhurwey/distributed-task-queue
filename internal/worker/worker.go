@@ -3,20 +3,20 @@ package worker
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"taskqueue/internal/model"
-	"taskqueue/internal/queue"
 	"taskqueue/internal/repository"
 	"time"
 )
 
 type Worker struct {
 	ID    int
-	Queue *queue.Queue
 	repo  repository.TaskRepository
+	queue repository.QueueRepository
 }
 
-func New(workerId int, que *queue.Queue, repo repository.TaskRepository) *Worker {
-	return &Worker{ID: workerId, Queue: que, repo: repo}
+func New(workerId int, queue repository.QueueRepository, repo repository.TaskRepository) *Worker {
+	return &Worker{ID: workerId, queue: queue, repo: repo}
 }
 
 func ProcessTask(task model.Task) error {
@@ -35,9 +35,11 @@ func (worker *Worker) Start(ctx context.Context) {
 
 	for {
 
-		task := worker.Queue.Dequeue()
+		taskID, err := worker.queue.Dequeue(ctx)
 
-		newTask, err := worker.repo.GetTask(ctx, int64(task.ID))
+		id, err := strconv.Atoi(taskID)
+
+		newTask, err := worker.repo.GetTask(ctx, int64(id))
 
 		if err != nil {
 			continue

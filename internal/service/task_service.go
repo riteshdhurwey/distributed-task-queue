@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"taskqueue/internal/model"
-	"taskqueue/internal/queue"
 	"taskqueue/internal/repository"
 	"time"
 )
@@ -16,10 +15,10 @@ var (
 
 type TaskService struct {
 	repo  repository.TaskRepository
-	queue *queue.Queue
+	queue repository.QueueRepository
 }
 
-func New(repo repository.TaskRepository, queue *queue.Queue) *TaskService {
+func New(repo repository.TaskRepository, queue repository.QueueRepository) *TaskService {
 	return &TaskService{repo: repo, queue: queue}
 }
 
@@ -39,7 +38,7 @@ func (s *TaskService) CreateTask(ctx context.Context, taskName string) (*model.T
 	if err != nil {
 		return &model.Task{}, err
 	}
-	s.queue.Enqueue(task)
+	s.queue.Enqueue(ctx, taskID, float64(task.CreatedAt.UnixMilli()))
 	return &task, nil
 }
 
@@ -58,8 +57,8 @@ func (s *TaskService) RetryTask(ctx context.Context, taskID int) (*model.Task, e
 		task.Status = "pending"
 		task.Error = ""
 		task.UpdatedAt = time.Now()
-		s.repo.UpdateTask(ctx,task)
-		s.queue.Enqueue(*task)
+		s.repo.UpdateTask(ctx, task)
+		s.queue.Enqueue(ctx, int64(taskID), float64(task.CreatedAt.UnixMilli()))
 
 		return task, nil
 

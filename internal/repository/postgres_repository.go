@@ -66,3 +66,32 @@ func (repo *PostgresRepo) UpdateTask(ctx context.Context, task *model.Task) erro
 
 	return nil
 }
+
+func (repo *PostgresRepo) GetPendingTasks(ctx context.Context) (*[]model.Pair, error) {
+
+	query := `SELECT id,created_at FROM tasks WHERE status = $1`
+
+	rows, err := repo.DB.Query(ctx, query, "pending")
+
+	if err != nil {
+		return &[]model.Pair{}, err
+	}
+
+	var response []model.Pair
+
+	for rows.Next() {
+		var pair model.Pair
+		err := rows.Scan(&pair.TaskID,&pair.CreatedAt)
+
+		if err != nil {
+			return &[]model.Pair{}, err
+		}
+
+		response = append(response, pair)
+	}
+
+	defer rows.Close()
+
+	return &response, nil
+
+}

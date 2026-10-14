@@ -11,3 +11,8 @@ type Task struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type Pair struct {
+	TaskID    int
+	CreatedAt time.Time
+}
