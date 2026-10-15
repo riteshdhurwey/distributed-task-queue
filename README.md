@@ -196,6 +196,4 @@ Tasks are persisted in PostgreSQL, and pending task IDs are queued in Redis.
 - [ ] Docker support
 - [ ] Transactional outbox for reliable database-to-queue delivery
 
-## License
 
-Choose and add a license before publishing the project for reuse, such as the MIT License.
