@@ -83,6 +83,9 @@ func (h *TaskHandler) RetryTask(ctx *gin.Context) {
 		case errors.Is(serviceErr, service.ErrTaskNotFailed):
 			ctx.JSON(http.StatusConflict, gin.H{"error": "Only failed tasks can be retried"})
 			return
+		case errors.Is(serviceErr, service.ErrMaxAttemptLimitExceeded):
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "retry limit exceeded. only 5 requests allowed"})
+			return
 		default:
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retry task"})
 			return

@@ -10,14 +10,15 @@ import (
 
 type RedisRepository struct {
 	client *redis.Client
+	queueKey string
 }
 
-func NewRedisRepository(client *redis.Client) *RedisRepository {
-	return &RedisRepository{client: client}
+func NewRedisRepository(client *redis.Client,queueKey string) *RedisRepository {
+	return &RedisRepository{client: client,queueKey: queueKey}
 }
 
 func (r *RedisRepository) Enqueue(ctx context.Context, taskID int64, score float64) error {
-	_, err := r.client.ZAdd(ctx, "taskqueue", redis.Z{
+	_, err := r.client.ZAdd(ctx, r.queueKey, redis.Z{
 		Score:  float64(score),
 		Member: strconv.FormatInt(taskID, 10),
 	}).Result()
@@ -25,7 +26,7 @@ func (r *RedisRepository) Enqueue(ctx context.Context, taskID int64, score float
 }
 
 func (r *RedisRepository) Dequeue(ctx context.Context) (string, error) {
-	result, err := r.client.ZPopMin(ctx, "taskqueue", 1).Result()
+	result, err := r.client.ZPopMin(ctx, r.queueKey, 1).Result()
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {

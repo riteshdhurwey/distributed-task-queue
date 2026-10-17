@@ -9,7 +9,13 @@ import (
 )
 
 func ConnectDB() (*pgxpool.Pool, error) {
-	err := godotenv.Load()
+	
+	_, err := os.Stat(".env")
+	if err != nil {
+		err = godotenv.Load("../../.env")
+	} else {
+		err = godotenv.Load(".env")
+	}
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to load env : %w", err)

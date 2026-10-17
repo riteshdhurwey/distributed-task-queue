@@ -10,6 +10,7 @@ import (
 	"taskqueue/internal/repository"
 	"taskqueue/internal/service"
 	"taskqueue/internal/worker"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,29 +37,40 @@ func main() {
 	defer cancel()
 
 	repo := repository.NewPostgesRepo(conn)
-	redisRepo := repository.NewRedisRepository(rdb)
+	redisRepo := repository.NewRedisRepository(rdb,"taskqueue")
 
-	pendingTasks, err := repo.GetPendingTasks(ctx)
+	service := service.New(repo, redisRepo)
+
+	err = service.GetPendingTasks(ctx)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, task := range *pendingTasks {
-		err := redisRepo.Enqueue(ctx, int64(task.TaskID), float64(task.CreatedAt.UnixMilli()))
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	Worker1 := worker.New(1, redisRepo, repo)
-	Worker2 := worker.New(2, redisRepo, repo)
+	Worker1 := worker.New(1, redisRepo, repo,worker.ProcessTask)
+	Worker2 := worker.New(2, redisRepo, repo,worker.ProcessTask)
 
 	go Worker1.Start(ctx)
 	go Worker2.Start(ctx)
 
+	// Re-enqueue processing tasks whose leases have expired.
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := service.RecoverAndRequeueTasks(ctx); err != nil {
+					log.Printf("task recovery failed: %v", err)
+				}
+			}
+		}
+	}()
+
 	router := gin.Default()
-	service := service.New(repo, redisRepo)
 	handler := handler.New(service)
 
 	router.POST("/tasks", handler.CreateTask)

@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrTaskNotFound  = errors.New("task not found")
-	ErrTaskNotFailed = errors.New("only failed tasks can be retried")
+	ErrTaskNotFound            = errors.New("task not found")
+	ErrTaskNotFailed           = errors.New("only failed tasks can be retried")
+	ErrMaxAttemptLimitExceeded = errors.New("retry limit exceeded. only 5 requests allowed")
 )
 
 type TaskService struct {
@@ -53,10 +54,21 @@ func (s *TaskService) RetryTask(ctx context.Context, taskID int) (*model.Task, e
 		return &model.Task{}, ErrTaskNotFound
 	}
 
-	if task.Status == "failed" {
+	MaxAttempts := 5
+
+	if task.Attempts > MaxAttempts {
+		task.Status = "dead"
+		task.Error = ErrMaxAttemptLimitExceeded.Error()
+		task.UpdatedAt = time.Now()
+		s.repo.UpdateTask(ctx, task)
+
+		return task, ErrMaxAttemptLimitExceeded
+
+	} else if task.Status == "failed" {
 		task.Status = "pending"
 		task.Error = ""
 		task.UpdatedAt = time.Now()
+		task.Attempts++
 		s.repo.UpdateTask(ctx, task)
 		s.queue.Enqueue(ctx, int64(taskID), float64(task.CreatedAt.UnixMilli()))
 
