@@ -162,6 +162,7 @@ Tasks are persisted in PostgreSQL, and pending task IDs are queued in Redis.
 │   └── server/
 │       └── main.go
 ├── config/
+├── docs/
 ├── internal/
 │   ├── database/
 │   ├── handler/
@@ -188,7 +189,7 @@ Tasks are persisted in PostgreSQL, and pending task IDs are queued in Redis.
 - [x] PostgreSQL task persistence
 - [x] Redis ZSET queue integration
 - [x] Startup recovery of pending tasks
-- [ ] Reliable task claiming and crash recovery
+- [x] Reliable task claiming and crash recovery
 - [ ] Automatic retries with exponential backoff
 - [ ] Graceful worker shutdown
 - [ ] Unit and integration tests
